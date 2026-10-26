@@ -8,6 +8,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -47,6 +49,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ForbiddenOperationException.class)
     public ResponseEntity<ApiError> prohibido(ForbiddenOperationException ex, HttpServletRequest req) {
         return construir(HttpStatus.FORBIDDEN, ex.getMessage(), req, null);
+    }
+
+    // 403: el rol del usuario no permite esta operación
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiError> accesoDenegado(AccessDeniedException ex, HttpServletRequest req) {
+        return construir(HttpStatus.FORBIDDEN, "No tienes permiso para realizar esta acción", req, null);
+    }
+
+    // 401: credenciales incorrectas o sesión no válida
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiError> noAutenticado(AuthenticationException ex, HttpServletRequest req) {
+        return construir(HttpStatus.UNAUTHORIZED, "Credenciales inválidas o sesión no válida", req, null);
     }
 
     // 400: datos inválidos en el cuerpo de la petición (@Valid)
