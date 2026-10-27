@@ -4,6 +4,7 @@ import com.example.AlimentaRed.config.UsuarioAutenticado;
 import com.example.AlimentaRed.dto.UsuarioResponse;
 import com.example.AlimentaRed.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/usuarios")
 @RequiredArgsConstructor
 @Tag(name = "Usuarios", description = "Perfil del usuario autenticado")
+@SecurityRequirement(name = "bearerAuth")
 public class UsuarioController {
 
     private final AuthService authService;

@@ -6,6 +6,7 @@ import com.example.AlimentaRed.dto.SolicitudRequest;
 import com.example.AlimentaRed.dto.SolicitudResponse;
 import com.example.AlimentaRed.service.SolicitudService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import java.util.List;
 @RequestMapping("/api/solicitudes")
 @RequiredArgsConstructor
 @Tag(name = "Solicitudes", description = "Solicitud, aprobación y rechazo de lotes")
+@SecurityRequirement(name = "bearerAuth")
 public class SolicitudController {
 
     private final SolicitudService solicitudService;

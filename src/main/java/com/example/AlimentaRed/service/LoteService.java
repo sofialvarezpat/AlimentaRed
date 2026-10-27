@@ -1,5 +1,6 @@
 package com.example.AlimentaRed.service;
 
+
 import com.example.AlimentaRed.Exception.BusinessRuleException;
 import com.example.AlimentaRed.Exception.ForbiddenOperationException;
 import com.example.AlimentaRed.Exception.ResourceNotFoundException;
@@ -15,16 +16,22 @@ import com.example.AlimentaRed.repository.LoteAlimentoRepository;
 import com.example.AlimentaRed.repository.UsuarioRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -34,9 +41,18 @@ public class LoteService {
     private final UsuarioRepository usuarioRepository;
     private final HistorialService historialService;
 
-    // RF03: un donante publica un lote
+    @Value("${supabase.url}")
+    private String supabaseUrl;
+
+    @Value("${supabase.key}")
+    private String supabaseKey;
+
+    @Value("${supabase.bucket}")
+    private String bucketName;
+
+    // RF03: un donante publica un lote (con soporte para imagen opcional)
     @Transactional
-    public LoteResponse crear(LoteRequest request, Long usuarioId) {
+    public LoteResponse crear(LoteRequest request, MultipartFile imagen, Long usuarioId) {
         Usuario usuario = cargarUsuario(usuarioId);
         Organizacion organizacion = usuario.getOrganizacion();
 
@@ -57,10 +73,47 @@ public class LoteService {
         lote.setEstado(EstadoLote.DISPONIBLE);
         lote.setDonante(organizacion);
 
+        // Subir imagen a Supabase Storage si viene adjunta
+        if (imagen != null && !imagen.isEmpty()) {
+            String imagenUrl = subirImagenASupabase(imagen);
+            lote.setImagenUrl(imagenUrl); // Asegúrate de tener este campo en tu entidad LoteAlimento
+        }
+
         LoteAlimento guardado = loteRepository.save(lote);
         historialService.registrar(HistorialService.LOTE, guardado.getId(),
                 null, EstadoLote.DISPONIBLE.name(), usuario);
         return LoteResponse.desde(guardado);
+    }
+
+    // Método auxiliar para conectar con la API REST de Supabase Storage
+    private String subirImagenASupabase(MultipartFile imagen) {
+        try {
+            String fileName = UUID.randomUUID().toString() + "_" + imagen.getOriginalFilename();
+            String uploadUrl = supabaseUrl + "/storage/v1/object/" + bucketName + "/" + fileName;
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + supabaseKey);
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+
+            HttpEntity<byte[]> requestEntity = new HttpEntity<>(imagen.getBytes(), headers);
+            RestTemplate restTemplate = new RestTemplate();
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    uploadUrl,
+                    HttpMethod.PUT,
+                    requestEntity,
+                    String.class
+            );
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                // Retorna la URL pública para consultar la imagen
+                return supabaseUrl + "/storage/v1/object/public/" + bucketName + "/" + fileName;
+            } else {
+                throw new RuntimeException("Error al subir la imagen a Supabase Storage");
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Error procesando el archivo de imagen para Supabase", e);
+        }
     }
 
     // RF04: consultar y filtrar lotes
@@ -155,3 +208,4 @@ public class LoteService {
         };
     }
 }
+

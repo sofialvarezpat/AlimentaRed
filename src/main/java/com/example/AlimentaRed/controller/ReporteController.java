@@ -4,6 +4,7 @@ import com.example.AlimentaRed.config.UsuarioAutenticado;
 import com.example.AlimentaRed.dto.ReporteImpactoResponse;
 import com.example.AlimentaRed.service.ReporteService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -20,6 +21,7 @@ import java.time.LocalDate;
 @RequestMapping("/api/reportes")
 @RequiredArgsConstructor
 @Tag(name = "Reportes", description = "Indicadores de impacto")
+@SecurityRequirement(name = "bearerAuth")
 public class ReporteController {
 
     private final ReporteService reporteService;

@@ -8,6 +8,7 @@ import com.example.AlimentaRed.dto.IncidenciaResponse;
 import com.example.AlimentaRed.dto.RetiroRequest;
 import com.example.AlimentaRed.service.EntregaService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ import java.util.List;
 @RequestMapping("/api/entregas")
 @RequiredArgsConstructor
 @Tag(name = "Entregas", description = "Retiro, recepción e incidencias de las entregas")
+@SecurityRequirement(name = "bearerAuth")
 public class EntregaController {
 
     private final EntregaService entregaService;

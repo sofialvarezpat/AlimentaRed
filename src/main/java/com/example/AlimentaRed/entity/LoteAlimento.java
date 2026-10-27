@@ -43,6 +43,9 @@ public class LoteAlimento {
     @Column(length = 150)
     private String ubicacion;
 
+    @Column(name = "imagen_url")
+    private String imagenUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private EstadoLote estado = EstadoLote.DISPONIBLE;
