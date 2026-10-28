@@ -57,13 +57,13 @@ public class EntregaServiceIMP implements EntregaService {
                 .orElseThrow(() -> new ResourceNotFoundException("Entrega no encontrada"));
 
         String estadoAnterior = entrega.getEstado().name();
-        entrega.setEstado(EstadoEntrega.RETIRADA);
+        entrega.setEstado(EstadoEntrega.RETIRADO);
         entrega.setFechaRetiro(LocalDateTime.now());
         entrega.setResponsableRetiro(request.responsable());
         entregaRepository.save(entrega);
 
         Usuario usuario = usuarioRepository.findById(usuarioId).orElse(null);
-        historialService.registrar(HistorialService.ENTREGA, entrega.getId(), estadoAnterior, EstadoEntrega.RETIRADA.name(), usuario);
+        historialService.registrar(HistorialService.ENTREGA, entrega.getId(), estadoAnterior, EstadoEntrega.RETIRADO.name(), usuario);
 
         return EntregaResponse.desde(entrega);
     }
