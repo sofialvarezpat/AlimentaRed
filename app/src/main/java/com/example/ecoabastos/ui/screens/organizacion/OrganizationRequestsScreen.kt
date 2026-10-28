@@ -85,6 +85,26 @@ sealed interface SolicitudesUiState {
 private val CategoriasSolicitud = listOf("Frutas", "Verduras", "Panadería", "Lácteos", "Carnes", "Otros")
 private val UnidadesSolicitud = listOf("Kg", "g", "L", "ml", "Unidades")
 
+/** Comprobación estandarizada de estado rechazado ignorando mayúsculas/minúsculas */
+private fun esEstadoRechazado(estado: EstadoSolicitud?): Boolean {
+    val estadoStr = estado?.name ?: return false
+    return estadoStr.equals("RECHAZADO", ignoreCase = true) ||
+           estadoStr.equals("RECHAZADA", ignoreCase = true) ||
+           estadoStr.equals("REJECTED", ignoreCase = true)
+}
+
+/** Comprobación estandarizada de estado aprobado o en retiro para habilitar la recogida */
+private fun esEstadoAprobadoOEnRetiro(estado: EstadoSolicitud?): Boolean {
+    val estadoStr = estado?.name ?: return false
+    return estado == EstadoSolicitud.APROBADA ||
+           estadoStr.equals("APROBADO", ignoreCase = true) ||
+           estadoStr.equals("APROBADA", ignoreCase = true) ||
+           estadoStr.equals("EN_RETIRO", ignoreCase = true) ||
+           estadoStr.equals("EN RETIRO", ignoreCase = true) ||
+           estadoStr.equals("ACEPTADA", ignoreCase = true) ||
+           estadoStr.equals("ACEPTADO", ignoreCase = true)
+}
+
 /**
  * Pantalla de Solicitudes: 2 pestañas según el mockup exacto.
  * ─ Pestaña 1 "Solicitud"        → formulario para crear solicitud
@@ -148,6 +168,7 @@ fun OrganizationRequestsScreen(
                     else -> PanelEstadoSolicitud(
                         state = solicitudesState,
                         isRecogiendo = isRecogiendo,
+                        snackbarHostState = snackbarHostState,
                         onConfirmarRetiro = onConfirmarRetiro,
                         onIrAlCatalogo = onIrAlCatalogo
                     )
@@ -241,6 +262,7 @@ private fun PanelEstadoSolicitud(
     state: SolicitudesUiState,
     onConfirmarRetiro: (Long, String) -> Unit,
     onIrAlCatalogo: () -> Unit,
+    snackbarHostState: SnackbarHostState? = null,
     isRecogiendo: Boolean = false
 ) {
     when (state) {
@@ -254,8 +276,8 @@ private fun PanelEstadoSolicitud(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text("No hay datos", fontWeight = FontWeight.Bold, color = EcoColors.Texto, fontSize = 16.sp)
-                Text("No tienes solicitudes activas pendientes de retiro.",
+                Text("Sin solicitudes activas", fontWeight = FontWeight.Bold, color = EcoColors.Texto, fontSize = 16.sp)
+                Text("Genera una solicitud desde la pestaña anterior.",
                     color = EcoColors.Gris, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
                 Spacer(Modifier.height(20.dp))
                 EcoActionButton(text = "Ir al Catálogo", onClick = onIrAlCatalogo,
@@ -286,17 +308,38 @@ private fun PanelEstadoSolicitud(
                 mutableStateOf(solicitudes.firstOrNull()?.id)
             }
 
+            // Sincronizar selección cuando se elimina una solicitud recogida de la lista activa
+            LaunchedEffect(solicitudes) {
+                if (solicitudes.none { it.id == solicitudSeleccionadaId }) {
+                    solicitudSeleccionadaId = solicitudes.firstOrNull()?.id
+                }
+            }
+
             val solicitud = solicitudes.find { it.id == solicitudSeleccionadaId }
                 ?: solicitudes.firstOrNull()
 
             if (solicitud == null) {
-                PanelEstadoSolicitud(state = SolicitudesUiState.Vacio, isRecogiendo = isRecogiendo, onConfirmarRetiro = onConfirmarRetiro, onIrAlCatalogo = onIrAlCatalogo)
+                PanelEstadoSolicitud(
+                    state = SolicitudesUiState.Vacio,
+                    isRecogiendo = isRecogiendo,
+                    snackbarHostState = snackbarHostState,
+                    onConfirmarRetiro = onConfirmarRetiro,
+                    onIrAlCatalogo = onIrAlCatalogo
+                )
                 return
             }
 
             var novedades by remember(solicitud.id) { mutableStateOf(solicitud.novedades ?: "") }
-            var mostrarDialogoRechazado by remember(solicitud.id, solicitud.estado) {
-                mutableStateOf(solicitud.estado == EstadoSolicitud.RECHAZADA)
+            var mostrarDialogoRechazado by remember(solicitud.id) { mutableStateOf(false) }
+
+            // Observar el estado de la solicitud mediante LaunchedEffect e ignorando mayúsculas/minúsculas
+            LaunchedEffect(solicitud.id, solicitud.estado) {
+                if (esEstadoRechazado(solicitud.estado)) {
+                    mostrarDialogoRechazado = true
+                    snackbarHostState?.showSnackbar(
+                        "Tu solicitud para '${solicitud.nombreLote}' fue rechazada y no fue aprobada."
+                    )
+                }
             }
 
             if (mostrarDialogoRechazado) {
@@ -304,7 +347,10 @@ private fun PanelEstadoSolicitud(
                     onDismissRequest = { mostrarDialogoRechazado = false },
                     title = { Text("Solicitud Rechazada", fontWeight = FontWeight.Bold) },
                     text = {
-                        Text("Esta solicitud para '${solicitud.nombreLote}' ha sido rechazada por la coordinación.")
+                        Text(
+                            "Tu solicitud para '${solicitud.nombreLote}' (${solicitud.cantidadSolicitada}) " +
+                            "no fue aprobada por la coordinación."
+                        )
                     },
                     confirmButton = {
                         TextButton(onClick = {
@@ -350,7 +396,7 @@ private fun PanelEstadoSolicitud(
                     }
                 }
 
-                // ── Stepper de pasos (depende EXCLUSIVAMENTE del estado persistido en backend) ──
+                // ── Stepper de pasos ──────────────────────────────────────
                 StepperSolicitud(estado = solicitud.estado, esRetirado = solicitud.recogido)
 
                 // ── Fecha y hora del retiro ───────────────────────────────
@@ -378,10 +424,14 @@ private fun PanelEstadoSolicitud(
 
                 Spacer(Modifier.height(4.dp))
 
-                // ── Confirmar Retiro (Sin mutación local optimista; espera HTTP 2xx) ──
+                // ── Confirmar Retiro (Habilitado si el estado es Aprobado o En Retiro) ──
+                val puedeConfirmarRetiro = !isRecogiendo &&
+                        !solicitud.recogido &&
+                        esEstadoAprobadoOEnRetiro(solicitud.estado)
+
                 EcoActionButton(
                     text = when {
-                        isRecogiendo -> "Confirmando en servidor..."
+                        isRecogiendo -> "Recogiendo..."
                         solicitud.recogido -> "Lote Recogido"
                         else -> "Recoger Lote"
                     },
@@ -391,7 +441,7 @@ private fun PanelEstadoSolicitud(
                     modifier = Modifier.fillMaxWidth(),
                     containerColor = if (solicitud.recogido) EcoColors.VerdeFondo else EcoColors.Secundario,
                     contentColor = if (solicitud.recogido) EcoColors.VerdeOscuro else EcoColors.Texto,
-                    enabled = !isRecogiendo && !solicitud.recogido && solicitud.estado == EstadoSolicitud.APROBADA
+                    enabled = puedeConfirmarRetiro
                 )
 
                 Spacer(Modifier.height(16.dp))
@@ -492,11 +542,12 @@ private fun SolicitudSelector(
     }
 }
 
-private fun estadoTexto(estado: EstadoSolicitud): String = when (estado) {
-    EstadoSolicitud.PENDIENTE -> "Solicitado"
-    EstadoSolicitud.APROBADA -> "Aprobado"
-    EstadoSolicitud.RECHAZADA -> "Rechazado"
-    EstadoSolicitud.CANCELADA -> "Cancelado"
+private fun estadoTexto(estado: EstadoSolicitud): String = when {
+    esEstadoRechazado(estado) -> "Rechazado"
+    esEstadoAprobadoOEnRetiro(estado) -> "Aprobado"
+    estado == EstadoSolicitud.PENDIENTE -> "Solicitado"
+    estado == EstadoSolicitud.CANCELADA -> "Cancelado"
+    else -> estado.name
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -508,7 +559,7 @@ private fun StepperSolicitud(estado: EstadoSolicitud, esRetirado: Boolean = fals
     val pasoActivo = when {
         esRetirado -> 3
         estado == EstadoSolicitud.PENDIENTE -> 0
-        estado == EstadoSolicitud.APROBADA -> 2
+        esEstadoAprobadoOEnRetiro(estado) -> 2
         else -> -1
     }
 

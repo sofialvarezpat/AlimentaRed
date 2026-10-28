@@ -152,7 +152,7 @@ class DonorViewModel(
 
                 val itemsFromLotes = lotes.map { lote ->
                     val entregaAsociada = entregas.find {
-                        it.loteNombre.equals(lote.nombre, ignoreCase = true)
+                        it.loteNombre?.equals(lote.nombre, ignoreCase = true) == true
                     }
 
                     val estadoUi = when {
@@ -196,11 +196,12 @@ class DonorViewModel(
 
                 val lotesNombres = lotes.map { it.nombre.lowercase().trim() }
                 val itemsExtraEntregas = entregas.filter {
-                    it.loteNombre.lowercase().trim() !in lotesNombres
+                    val loteNombre = it.loteNombre?.lowercase()?.trim() ?: ""
+                    loteNombre.isNotBlank() && loteNombre !in lotesNombres
                 }.map { e ->
                     EntregaUi(
                         id = e.id,
-                        nombreLote = e.loteNombre,
+                        nombreLote = e.loteNombre ?: "",
                         categoria = "Alimento",
                         cantidad = "Entrega #${e.id}",
                         estado = when (e.estado) {

@@ -30,6 +30,7 @@ class LoteRepository {
         private const val SUPABASE_BUCKET = "lote-imagenes"
 
         private val httpClient = OkHttpClient.Builder()
+            .dns(RetrofitClient.resilientDns)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .build()

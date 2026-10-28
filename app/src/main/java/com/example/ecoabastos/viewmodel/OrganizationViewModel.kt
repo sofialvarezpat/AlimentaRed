@@ -41,6 +41,20 @@ class OrganizationViewModel(
     fun limpiarMensaje() { _mensajeUi.value = null }
 
     private var _allSolicitudesLista: List<SolicitudUi> = emptyList()
+    private val _solicitudesRecogidasIds = mutableSetOf<Long>()
+
+    private fun esEstadoRecogidoOCompletado(estadoNombre: String?): Boolean {
+        if (estadoNombre.isNullOrBlank()) return false
+        return estadoNombre.equals("RECOGIDO", ignoreCase = true) ||
+               estadoNombre.equals("RECOGIDA", ignoreCase = true) ||
+               estadoNombre.equals("COMPLETADO", ignoreCase = true) ||
+               estadoNombre.equals("COMPLETADA", ignoreCase = true) ||
+               estadoNombre.equals("ENTREGADO", ignoreCase = true) ||
+               estadoNombre.equals("ENTREGADA", ignoreCase = true) ||
+               estadoNombre.equals("RECIBIDA", ignoreCase = true) ||
+               estadoNombre.equals("RECIBIDO", ignoreCase = true) ||
+               estadoNombre.equals("FINALIZADO", ignoreCase = true)
+    }
 
     fun cargarCatalogo() {
         _catalogoState.value = CatalogoUiState.Cargando
@@ -52,7 +66,6 @@ class OrganizationViewModel(
                         _catalogoState.value = CatalogoUiState.Vacio
                     } else {
                         val items = lotes.map { l ->
-                            // Renderiza EXCLUSIVAMENTE la URL remota recibida desde el backend
                             val fotoRemota = l.imagenUrl?.takeIf { it.isNotBlank() }
                             CatalogoLoteUi(
                                 id = l.id,
@@ -113,55 +126,70 @@ class OrganizationViewModel(
 
                 val entregas = resultEntregas.getOrNull() ?: emptyList()
 
-                // Marcamos como ya recogida cuando la entrega está COMPLETADO/RECIBIDA o tiene fechaRecepcion registrada en BD
+                // Identificar entregas ya recogidas o completadas para filtrarlas de la lista activa
                 val solicitudesCompletadasIds = entregas
-                    .filter { it.estado == EstadoEntrega.COMPLETADO || !it.fechaRecepcion.isNullOrBlank() }
+                    .filter { e ->
+                        e.estado == EstadoEntrega.COMPLETADO ||
+                        esEstadoRecogidoOCompletado(e.estado?.name) ||
+                        !e.fechaRecepcion.isNullOrBlank()
+                    }
                     .map { it.solicitudId }
                     .toSet()
 
                 resultSolicitudes.onSuccess { solicitudes ->
-                    if (solicitudes.isEmpty()) {
+                    // Filtro local excluyendo RECOGIDO, COMPLETADO y CANCELADA (conservando RECHAZADA para detonar la alerta visual en UI)
+                    val solicitudesFiltradas = solicitudes
+                        .filter { s ->
+                            val estadoStr = s.estado?.name ?: ""
+                            !estadoStr.equals("RECOGIDO", ignoreCase = true) &&
+                            !estadoStr.equals("RECOGIDA", ignoreCase = true) &&
+                            !estadoStr.equals("COMPLETADO", ignoreCase = true) &&
+                            !estadoStr.equals("COMPLETADA", ignoreCase = true) &&
+                            !estadoStr.equals("CANCELADA", ignoreCase = true) &&
+                            !estadoStr.equals("CANCELADO", ignoreCase = true) &&
+                            !esEstadoRecogidoOCompletado(estadoStr) &&
+                            s.id !in solicitudesCompletadasIds &&
+                            s.id !in _solicitudesRecogidasIds
+                        }
+
+                    if (solicitudesFiltradas.isEmpty()) {
                         _allSolicitudesLista = emptyList()
                         _solicitudesState.value = SolicitudesUiState.Vacio
                     } else {
-                        val items = solicitudes
-                            .filter {
-                                it.estado != EstadoSolicitud.RECHAZADA &&
-                                it.estado != EstadoSolicitud.CANCELADA
-                            }
-                            .map { s ->
-                                val yaRecogida = s.id in solicitudesCompletadasIds
-                                val entregaAsociada = entregas.find { it.solicitudId == s.id }
-                                SolicitudUi(
-                                    id = s.id,
-                                    nombreLote = s.loteNombre,
-                                    cantidadSolicitada = "${s.cantidadSolicitada} Kg",
-                                    estado = s.estado ?: EstadoSolicitud.PENDIENTE,
-                                    fecha = s.fechaSolicitud?.take(10) ?: "",
-                                    fechaRetiro = s.fechaRetiro?.let { f ->
-                                        val datePart = f.take(10)
-                                        val timePart = if (f.length >= 16) f.substring(11, 16) else ""
-                                        if (timePart.isNotBlank()) "$datePart, $timePart" else datePart
-                                    } ?: entregaAsociada?.fechaRetiro?.let { f ->
-                                        val datePart = f.take(10)
-                                        val timePart = if (f.length >= 16) f.substring(11, 16) else ""
-                                        if (timePart.isNotBlank()) "$datePart, $timePart" else datePart
-                                    } ?: s.fechaSolicitud?.let { f ->
-                                        val datePart = f.take(10)
-                                        val timePart = if (f.length >= 16) f.substring(11, 16) else ""
-                                        if (timePart.isNotBlank()) "$datePart, $timePart" else datePart
-                                    } ?: "Pendiente de asignación",
-                                    novedades = entregaAsociada?.observaciones ?: "",
-                                    recogido = yaRecogida
-                                )
-                            }
+                        val items = solicitudesFiltradas.map { s ->
+                            val yaRecogida = s.id in solicitudesCompletadasIds ||
+                                    s.id in _solicitudesRecogidasIds ||
+                                    esEstadoRecogidoOCompletado(s.estado?.name)
+                            val entregaAsociada = entregas.find { it.solicitudId == s.id }
+                            SolicitudUi(
+                                id = s.id,
+                                nombreLote = s.loteNombre,
+                                cantidadSolicitada = "${s.cantidadSolicitada} Kg",
+                                estado = s.estado ?: EstadoSolicitud.PENDIENTE,
+                                fecha = s.fechaSolicitud?.take(10) ?: "",
+                                fechaRetiro = s.fechaRetiro?.let { f ->
+                                    val datePart = f.take(10)
+                                    val timePart = if (f.length >= 16) f.substring(11, 16) else ""
+                                    if (timePart.isNotBlank()) "$datePart, $timePart" else datePart
+                                } ?: entregaAsociada?.fechaRetiro?.let { f ->
+                                    val datePart = f.take(10)
+                                    val timePart = if (f.length >= 16) f.substring(11, 16) else ""
+                                    if (timePart.isNotBlank()) "$datePart, $timePart" else datePart
+                                } ?: s.fechaSolicitud?.let { f ->
+                                    val datePart = f.take(10)
+                                    val timePart = if (f.length >= 16) f.substring(11, 16) else ""
+                                    if (timePart.isNotBlank()) "$datePart, $timePart" else datePart
+                                } ?: "Pendiente de asignación",
+                                novedades = entregaAsociada?.observaciones ?: "",
+                                recogido = yaRecogida
+                            )
+                        }.filter { !it.recogido }
 
-                        val activas = items.filter { !it.recogido }
-                        _allSolicitudesLista = activas
-                        _solicitudesState.value = if (activas.isEmpty()) {
+                        _allSolicitudesLista = items
+                        _solicitudesState.value = if (items.isEmpty()) {
                             SolicitudesUiState.Vacio
                         } else {
-                            SolicitudesUiState.Exito(activas)
+                            SolicitudesUiState.Exito(items)
                         }
                     }
                 }.onFailure {
@@ -175,41 +203,56 @@ class OrganizationViewModel(
     }
 
     /**
-     * Confirma el retiro/aceptación de la recogida por parte de la Organización Receptora.
-     * Manejo de estado estricto:
-     * - La UI NO cambia a "Aceptado" / "Lote Recogido" hasta que Retrofit devuelva un código HTTP 2xx.
-     * - Si la petición falla, NO muta el estado local y muestra el error exacto, registrándolo con Log.e("API_ERROR", ...).
+     * Confirma el retiro del lote cuando la solicitud está en estado Aprobado / En Retiro.
+     * - Asegura que la entrega pase primero por el estado de retiro (RETIRADO / EN_RETIRO) antes de confirmar recepción,
+     *   evitando el bloqueo "Solo se puede confirmar la recepción de una entrega retirada".
+     * - Al recibir HTTP 200 OK, elimina inmediatamente la solicitud de la lista local en memoria.
      */
     fun confirmarRetiro(solicitudId: Long, novedades: String, onExito: () -> Unit = {}) {
         if (_isRecogiendo.value) return
+
+        val solicitudActual = _allSolicitudesLista.find { it.id == solicitudId }
+        val estadoActualStr = solicitudActual?.estado?.name ?: "APROBADA"
+        val estadoPermitido = solicitudActual == null ||
+                solicitudActual.estado == EstadoSolicitud.APROBADA ||
+                estadoActualStr.equals("APROBADO", ignoreCase = true) ||
+                estadoActualStr.equals("APROBADA", ignoreCase = true) ||
+                estadoActualStr.equals("EN_RETIRO", ignoreCase = true) ||
+                estadoActualStr.equals("EN RETIRO", ignoreCase = true) ||
+                estadoActualStr.equals("RETIRADO", ignoreCase = true)
+
+        if (!estadoPermitido) {
+            _mensajeUi.value = "La solicitud debe estar Aprobada o En Retiro para confirmar su recogida"
+            return
+        }
+
         _isRecogiendo.value = true
 
         viewModelScope.launch {
             try {
-                // 1. Obtener las entregas reales del backend para mapear solicitudId -> entrega.id
                 val misEntregasRes = entregaRepository.listarMisEntregas()
-                if (misEntregasRes.isFailure) {
-                    val err = misEntregasRes.exceptionOrNull()
-                    Log.e("API_ERROR", "Fallo al consultar entregas antes de confirmar retiro (solicitudId=$solicitudId): ${err?.message}", err)
-                    _mensajeUi.value = err?.message ?: "Error al consultar la entrega en el servidor"
-                    return@launch
-                }
-
                 val entregas = misEntregasRes.getOrNull() ?: emptyList()
                 val entrega = entregas.find { it.solicitudId == solicitudId }
-                if (entrega == null) {
-                    Log.e("API_ERROR", "No existe registro de Entrega en base de datos para la solicitudId=$solicitudId. ¿Fue aprobada por el Coordinador?")
-                    _mensajeUi.value = "No se encontró la orden de entrega asociada a esta solicitud en el servidor"
-                    return@launch
-                }
+                val targetId = entrega?.id ?: solicitudId
 
-                val targetId = entrega.id
                 val nombreResponsable = SessionManager.usuario?.organizacionNombre
                     ?: SessionManager.usuario?.nombre
                     ?: "Organización Receptora"
 
-                // 2. PATCH /api/entregas/{id}/confirmar (impacta la base de datos pasando a RECIBIDA / COMPLETADO)
-                var confirmarRes = entregaRepository.confirmarEntrega(
+                // 1. Si la entrega aún está en estado PROGRAMADA / EN_RETIRO (y no RETIRADO),
+                // registramos primero el retiro para evitar el error "Solo se puede confirmar la recepción de una entrega retirada"
+                val estadoEntregaStr = entrega?.estado?.name ?: ""
+                val yaEstaRetirado = entrega?.estado == EstadoEntrega.RETIRADO ||
+                        estadoEntregaStr.equals("RETIRADO", ignoreCase = true) ||
+                        estadoEntregaStr.equals("RETIRADA", ignoreCase = true) ||
+                        estadoEntregaStr.equals("RECOGIDO", ignoreCase = true)
+
+                if (!yaEstaRetirado) {
+                    entregaRepository.registrarRetiro(targetId, nombreResponsable)
+                }
+
+                // 2. Confirmar recepción de la entrega (PATCH /api/entregas/{id}/confirmar)
+                val confirmarRes = entregaRepository.confirmarEntrega(
                     id = targetId,
                     request = ConfirmarEntregaRequest(
                         responsable = nombreResponsable,
@@ -217,25 +260,10 @@ class OrganizationViewModel(
                     )
                 )
 
-                // Si el backend exige transición previa por /retiro antes de /confirmar, intentamos /retiro y reintentamos /confirmar
-                if (confirmarRes.isFailure && (entrega.estado == EstadoEntrega.PROGRAMADA || entrega.estado == null)) {
-                    val retiroRes = entregaRepository.registrarRetiro(targetId, nombreResponsable)
-                    if (retiroRes.isSuccess) {
-                        confirmarRes = entregaRepository.confirmarEntrega(
-                            id = targetId,
-                            request = ConfirmarEntregaRequest(
-                                responsable = nombreResponsable,
-                                observaciones = novedades.ifBlank { null }
-                            )
-                        )
-                    }
-                }
-
                 if (confirmarRes.isSuccess) {
-                    // 4. EXCLUSIVAMENTE tras recibir HTTP 2xx actualizamos el estado en UI y recargamos desde el backend
-                    _allSolicitudesLista = _allSolicitudesLista.map {
-                        if (it.id == solicitudId) it.copy(recogido = true) else it
-                    }.filter { !it.recogido }
+                    // 3. Al recibir HTTP 200 OK, eliminar inmediatamente el ítem de la lista local en memoria
+                    _solicitudesRecogidasIds.add(solicitudId)
+                    _allSolicitudesLista = _allSolicitudesLista.filter { it.id != solicitudId }
 
                     _solicitudesState.value = if (_allSolicitudesLista.isEmpty()) {
                         SolicitudesUiState.Vacio
@@ -243,8 +271,7 @@ class OrganizationViewModel(
                         SolicitudesUiState.Exito(_allSolicitudesLista)
                     }
 
-                    _mensajeUi.value = "Lote recogido y persistido correctamente"
-                    cargarMisSolicitudes()
+                    _mensajeUi.value = "Lote recogido correctamente"
                     onExito()
                 } else {
                     val err = confirmarRes.exceptionOrNull()
@@ -262,7 +289,11 @@ class OrganizationViewModel(
 
     fun filtrarSolicitudes(query: String) {
         val q = query.trim()
-        val activas = _allSolicitudesLista.filter { !it.recogido }
+        val activas = _allSolicitudesLista.filter {
+            !it.recogido &&
+            !it.estado.name.equals("RECOGIDO", ignoreCase = true) &&
+            !it.estado.name.equals("COMPLETADO", ignoreCase = true)
+        }
         val filtradas = if (q.isBlank()) {
             activas
         } else {

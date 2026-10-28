@@ -15,15 +15,15 @@ data class IncidenciaRequest(
 
 data class EntregaResponse(
     val id: Long,
-    val asignacionId: Long,
-    val solicitudId: Long,
-    val loteNombre: String,
-    val estado: EstadoEntrega?,
-    val fechaRetiro: String?,
-    val fechaRecepcion: String?,
-    val responsableRetiro: String?,
-    val responsableRecepcion: String?,
-    val observaciones: String?
+    val asignacionId: Long? = null,
+    val solicitudId: Long? = null,
+    val loteNombre: String? = null,
+    val estado: EstadoEntrega? = null,
+    val fechaRetiro: String? = null,
+    val fechaRecepcion: String? = null,
+    val responsableRetiro: String? = null,
+    val responsableRecepcion: String? = null,
+    val observaciones: String? = null
 )
 
 data class IncidenciaResponse(

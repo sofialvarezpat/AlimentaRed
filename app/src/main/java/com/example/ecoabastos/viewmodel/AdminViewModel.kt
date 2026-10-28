@@ -187,7 +187,7 @@ class AdminViewModel(
 
                 // Filas reales del backend (SIN mocks ni datos quemados)
                 val filasReales = lotes.map { lote ->
-                    val entregaAsoc = entregas.find { it.loteNombre.equals(lote.nombre, ignoreCase = true) }
+                    val entregaAsoc = entregas.find { it.loteNombre?.equals(lote.nombre, ignoreCase = true) == true }
                     val receptor = lote.receptorNombre?.takeIf { it.isNotBlank() }
                         ?: entregaAsoc?.responsableRecepcion?.takeIf { it.isNotBlank() }
                         ?: entregaAsoc?.responsableRetiro?.takeIf { it.isNotBlank() }

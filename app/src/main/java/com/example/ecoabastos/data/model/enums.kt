@@ -32,16 +32,16 @@ enum class EstadoLote {
 }
 
 enum class EstadoSolicitud {
-    @SerializedName("PENDIENTE", alternate = ["PENDING"])
+    @SerializedName("PENDIENTE", alternate = ["PENDING", "pendiente"])
     PENDIENTE,
 
-    @SerializedName("APROBADA", alternate = ["APPROVED", "ACEPTADA"])
+    @SerializedName("APROBADA", alternate = ["APROBADO", "APPROVED", "ACEPTADA", "ACEPTADO", "EN_RETIRO", "EN RETIRO", "aprobada", "aprobado", "en_retiro"])
     APROBADA,
 
-    @SerializedName("RECHAZADA", alternate = ["REJECTED"])
+    @SerializedName("RECHAZADA", alternate = ["RECHAZADO", "REJECTED", "rechazada", "rechazado"])
     RECHAZADA,
 
-    @SerializedName("CANCELADA", alternate = ["CANCELLED", "CANCELED"])
+    @SerializedName("CANCELADA", alternate = ["CANCELADO", "CANCELLED", "CANCELED", "RECOGIDO", "RECOGIDA", "COMPLETADO", "COMPLETADA", "ENTREGADO", "ENTREGADA", "RECIBIDA", "RECIBIDO", "cancelada", "cancelado", "recogido", "completado"])
     CANCELADA
 }
 
